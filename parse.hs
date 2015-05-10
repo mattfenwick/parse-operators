@@ -113,10 +113,12 @@ showT (Node op l r) = "(" ++ showT l ++ " " ++ opStr ++ " " ++ showT r ++ ")"
 (4 + ((3 ** (2 ** 1)) / 8)) - (4 * 5)
 -}
 
+chainR :: Parser t (a -> a -> a) -> Parser t a -> Parser t a
 chainR op p = (f <$> p <*> op <*> chainR op p) <|> p
   where
     f a b c = b a c
 
+chainL :: Parser t (a -> a -> a) -> Parser t a -> Parser t a
 chainL op p = flip ($) <$> p <*> rest
   where
     f b c rs a = rs (b a c)
@@ -126,6 +128,7 @@ pExp = chainR (Node <$> (pChoice $ map pSyms ["**", "^"])) (Leaf <$> pInteger)
 
 pMult = chainL (Node <$> (pChoice $ map pSyms ["*", "x", "/", "%"])) pExp
 
+pAdd :: Parser Char (T Int String)
 pAdd = chainL op p
   where
     op = Node <$> (pChoice $ map pSyms ["+", "-"])
