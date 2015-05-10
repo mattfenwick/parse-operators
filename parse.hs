@@ -102,40 +102,6 @@ showT (Node op l r) = "(" ++ showT l ++ " " ++ opStr ++ " " ++ showT r ++ ")"
   where
     opStr = filter ((/=) '"') $ show op
 
--- pPlus = Node <$> (Leaf <$> pInteger) <* pSym '+' <*> (Leaf <$> pInteger)
-
-flip3 f x y z = f x z y
-
-pPlus' = applyAll <$> pInt <*> pMany0 (flip3 Node <$> (plus <|> minus) <*> pInt)
-  where
-    plus = pSym '+' -- *> pReturn (+)
-    minus = pSym '-' -- *> pReturn (-)
-    pInt = Leaf <$> pInteger
-
-applyAll :: a -> [a -> a] -> a 
-applyAll x [] = x
-applyAll x (f:fs) = applyAll (f x) fs
-
-pChainL :: Parser t a -> Parser t b -> Parser t (T b a)
-pChainL op p = applyAll <$> term <*> pMany0 (flip3 Node <$> op <*> term)
-  where
-    term = Leaf <$> p
-
-pPlus'' = pChainL (pChoice $ map pSym "+-") pInteger
-
-pChainR op p = 
-    p <|> 
-    (flip ($) <$> p <*> (flip <$> op <*> pChainR op p))
-
--- pPow = pChainR (pChoice $ map pSyms ["^", "**"]) pInteger
-pPow = pChainR ((pReturn (^) <* pSym '^') <|> (pReturn (^) <* pSyms "**")) pInteger
-
-{-
-tFold :: T a -> a
-tFold (Leaf x) = x
-tFold (Node f l r) = f (tFold l) (tFold r)
--}
-
 {-
 1 - 2 - 3
 (1 - 2) - 3
