@@ -158,12 +158,12 @@ chainL op p = flip ($) <$> p <*> rest
 
 pExp = chainR (Node <$> (pChoice $ map pSyms ["**", "^"])) (Leaf <$> pInteger)
 
-pMult = chainL (Node <$> (pChoice $ map pSyms ["*", "x", "/", "%"])) (Leaf <$> pInteger)
+pMult = chainL (Node <$> (pChoice $ map pSyms ["*", "x", "/", "%"])) pExp
 
 pAdd = chainL op p
   where
     op = Node <$> (pChoice $ map pSyms ["+", "-"])
-    p = Leaf <$> pInteger
+    p = pMult
 
 run :: Parser t a -> [t] -> Maybe ([t], a)
 run = unParser
