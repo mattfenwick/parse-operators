@@ -147,33 +147,18 @@ tFold (Node f l r) = f (tFold l) (tFold r)
 (4 + ((3 ** (2 ** 1)) / 8)) - (4 * 5)
 -}
 
-pExp :: Parser Char (T Int String)
-pExp = (f <$> p <*> op <*> pExp) <|> p
-  where
-    f a b c = b a c
-    p = Leaf <$> pInteger
-    op = Node <$> (pChoice $ map pSyms ["**", "^"])
-
 chainR op p = (f <$> p <*> op <*> chainR op p) <|> p
   where
     f a b c = b a c
-
-pExp' = chainR (Node <$> (pChoice $ map pSyms ["**", "^"])) (Leaf <$> pInteger)
-
-pAdd :: Parser Char (T Int String)
-pAdd = (\arg1 rs -> rs arg1) <$> p <*> rest
-  where
-    f b c rs a = rs (Node b a c)
-    rest = (f <$> op <*> p <*> rest) <|> pReturn id
-    p = Leaf <$> pInteger
-    op = pChoice $ map pSyms ["+", "-"]
 
 chainL op p = flip ($) <$> p <*> rest
   where
     f b c rs a = rs (b a c)
     rest = (f <$> op <*> p <*> rest) <|> pReturn id
 
-pAdd' = chainL op p
+pExp = chainR (Node <$> (pChoice $ map pSyms ["**", "^"])) (Leaf <$> pInteger)
+
+pAdd = chainL op p
   where
     op = Node <$> (pChoice $ map pSyms ["+", "-"])
     p = Leaf <$> pInteger
