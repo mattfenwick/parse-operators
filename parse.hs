@@ -93,14 +93,16 @@ pInteger = read <$> pMany1 (pSatisfy (\x -> x <= '9' && x >= '0'))
 
 data T a b
     = Leaf a
-    | Node b (T a b) (T a b)
+    | One b (T a b)
+    | Two b (T a b) (T a b)
   deriving (Show)
 
 showT :: (Show a, Show b) => T a b -> String
 showT (Leaf x) = show x
-showT (Node op l r) = "(" ++ showT l ++ " " ++ opStr ++ " " ++ showT r ++ ")"
-  where
-    opStr = filter ((/=) '"') $ show op
+showT (One op arg) = "(" ++ opStr (show op) ++ " " ++ showT arg ++ ")"
+showT (Two op l r) = "(" ++ showT l ++ " " ++ opStr (show op) ++ " " ++ showT r ++ ")"
+
+opStr = filter ((/=) '"')
 
 {-
 1 - 2 - 3
@@ -124,14 +126,19 @@ chainL op p = flip ($) <$> p <*> rest
     f b c rs a = rs (b a c)
     rest = (f <$> op <*> p <*> rest) <|> pReturn id
 
-pExp = chainR (Node <$> (pChoice $ map pSyms ["**", "^"])) (Leaf <$> pInteger)
+unary :: Parser t (a -> a) -> Parser t a -> Parser t a
+unary op p = (op <*> unary op p) <|> p
 
-pMult = chainL (Node <$> (pChoice $ map pSyms ["*", "x", "/", "%"])) pExp
+pNot = unary (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
+
+pExp = chainR (Two <$> (pChoice $ map pSyms ["**", "^"])) pNot
+
+pMult = chainL (Two <$> (pChoice $ map pSyms ["*", "x", "/", "%"])) pExp
 
 pAdd :: Parser Char (T Int String)
 pAdd = chainL op p
   where
-    op = Node <$> (pChoice $ map pSyms ["+", "-"])
+    op = Two <$> (pChoice $ map pSyms ["+", "-"])
     p = pMult
 
 run :: Parser t a -> [t] -> Maybe ([t], a)
