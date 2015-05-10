@@ -91,18 +91,95 @@ parens' = foldr max 0 <$> pMany0 pParens'
 pInteger :: Parser Char Int
 pInteger = read <$> pMany1 (pSatisfy (\x -> x <= '9' && x >= '0'))
 
-data T a
+data T a b
     = Leaf a
-    | Node (T a) (T a)
+    | Node b (T a b) (T a b)
   deriving (Show)
 
-pPlus = Node <$> (Leaf <$> pInteger) <* pSym '+' <*> (Leaf <$> pInteger)
-
-pPlus' = applyAll <$> pInt <*> pMany0 (flip Node <$ pSym '+' <*> pInt)
+showT :: (Show a, Show b) => T a b -> String
+showT (Leaf x) = show x
+showT (Node op l r) = "(" ++ showT l ++ " " ++ opStr ++ " " ++ showT r ++ ")"
   where
+    opStr = filter ((/=) '"') $ show op
+
+-- pPlus = Node <$> (Leaf <$> pInteger) <* pSym '+' <*> (Leaf <$> pInteger)
+
+flip3 f x y z = f x z y
+
+pPlus' = applyAll <$> pInt <*> pMany0 (flip3 Node <$> (plus <|> minus) <*> pInt)
+  where
+    plus = pSym '+' -- *> pReturn (+)
+    minus = pSym '-' -- *> pReturn (-)
     pInt = Leaf <$> pInteger
-    applyAll x [] = x
-    applyAll x (f:fs) = applyAll (f x) fs
+
+applyAll :: a -> [a -> a] -> a 
+applyAll x [] = x
+applyAll x (f:fs) = applyAll (f x) fs
+
+pChainL :: Parser t a -> Parser t b -> Parser t (T b a)
+pChainL op p = applyAll <$> term <*> pMany0 (flip3 Node <$> op <*> term)
+  where
+    term = Leaf <$> p
+
+pPlus'' = pChainL (pChoice $ map pSym "+-") pInteger
+
+pChainR op p = 
+    p <|> 
+    (flip ($) <$> p <*> (flip <$> op <*> pChainR op p))
+
+-- pPow = pChainR (pChoice $ map pSyms ["^", "**"]) pInteger
+pPow = pChainR ((pReturn (^) <* pSym '^') <|> (pReturn (^) <* pSyms "**")) pInteger
+
+{-
+tFold :: T a -> a
+tFold (Leaf x) = x
+tFold (Node f l r) = f (tFold l) (tFold r)
+-}
+
+{-
+1 - 2 - 3
+(1 - 2) - 3
+
+4 ** 5 ** 6
+4 ** (5 ** 6)
+
+4 + 3 ** 2 ** 1 / 8 - 4 * 5
+(4 + ((3 ** (2 ** 1)) / 8)) - (4 * 5)
+-}
+
+pExp :: Parser Char (T Int String)
+pExp = (f <$> p <*> op <*> pExp) <|> p
+  where
+    f a b c = Node b a c
+    p = Leaf <$> pInteger
+    op = pChoice $ map pSyms ["**", "^"]
+
+{-
+pAdd :: Parser Char (T Int String)
+pAdd = p
+  where
+    rest = \left -> f left <$> op <*> pAdd
+    f l op r = Node op l r 
+-}
+{-
+pAdd = (\f rs -> rs f) <$> p <*> (rest <|> pReturn id)
+  where
+    rest = (\b c a -> Node b a c) <$> op <*> pAdd
+    p = Leaf <$> pInteger
+    op = pChoice $ map pSyms ["+", "-"]
+-}
+-- 1. parse an operand
+-- repeatedly:
+--   try to parse an operator
+--   try to parse a second operand
+--   pass in the first operand; this becomes the new first operand
+pAdd :: Parser Char (T Int String)
+pAdd = (\arg1 rs -> rs arg1) <$> p <*> rest
+  where
+    f b c rs a = rs (Node b a c)
+    rest = (f <$> op <*> p <*> rest) <|> pReturn id
+    p = Leaf <$> pInteger
+    op = pChoice $ map pSyms ["+", "-"]
 
 run :: Parser t a -> [t] -> Maybe ([t], a)
 run = unParser
