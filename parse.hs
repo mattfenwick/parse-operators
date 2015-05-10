@@ -150,29 +150,16 @@ tFold (Node f l r) = f (tFold l) (tFold r)
 pExp :: Parser Char (T Int String)
 pExp = (f <$> p <*> op <*> pExp) <|> p
   where
-    f a b c = Node b a c
+    f a b c = b a c
     p = Leaf <$> pInteger
-    op = pChoice $ map pSyms ["**", "^"]
+    op = Node <$> (pChoice $ map pSyms ["**", "^"])
 
-{-
-pAdd :: Parser Char (T Int String)
-pAdd = p
+chainR op p = (f <$> p <*> op <*> chainR op p) <|> p
   where
-    rest = \left -> f left <$> op <*> pAdd
-    f l op r = Node op l r 
--}
-{-
-pAdd = (\f rs -> rs f) <$> p <*> (rest <|> pReturn id)
-  where
-    rest = (\b c a -> Node b a c) <$> op <*> pAdd
-    p = Leaf <$> pInteger
-    op = pChoice $ map pSyms ["+", "-"]
--}
--- 1. parse an operand
--- repeatedly:
---   try to parse an operator
---   try to parse a second operand
---   pass in the first operand; this becomes the new first operand
+    f a b c = b a c
+
+pExp' = chainR (Node <$> (pChoice $ map pSyms ["**", "^"])) (Leaf <$> pInteger)
+
 pAdd :: Parser Char (T Int String)
 pAdd = (\arg1 rs -> rs arg1) <$> p <*> rest
   where
@@ -180,6 +167,16 @@ pAdd = (\arg1 rs -> rs arg1) <$> p <*> rest
     rest = (f <$> op <*> p <*> rest) <|> pReturn id
     p = Leaf <$> pInteger
     op = pChoice $ map pSyms ["+", "-"]
+
+chainL op p = flip ($) <$> p <*> rest
+  where
+    f b c rs a = rs (b a c)
+    rest = (f <$> op <*> p <*> rest) <|> pReturn id
+
+pAdd' = chainL op p
+  where
+    op = Node <$> (pChoice $ map pSyms ["+", "-"])
+    p = Leaf <$> pInteger
 
 run :: Parser t a -> [t] -> Maybe ([t], a)
 run = unParser
