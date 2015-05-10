@@ -95,14 +95,17 @@ data T a b
     = Leaf a
     | One b (T a b)
     | Two b (T a b) (T a b)
+    | Three b (T a b) (T a b) (T a b)
   deriving (Show)
 
 showT :: (Show a, Show b) => T a b -> String
 showT (Leaf x) = show x
-showT (One op arg) = "(" ++ opStr (show op) ++ " " ++ showT arg ++ ")"
-showT (Two op l r) = "(" ++ showT l ++ " " ++ opStr (show op) ++ " " ++ showT r ++ ")"
+showT (One op arg) = "(" ++ opStr op ++ " " ++ showT arg ++ ")"
+showT (Two op l r) = "(" ++ showT l ++ " " ++ opStr op ++ " " ++ showT r ++ ")"
+showT (Three op l m r) = "(" ++ opStr op ++ " " ++ showT l ++ " " ++ showT m ++ " " ++ showT r ++ ")"
 
-opStr = filter ((/=) '"')
+opStr :: Show a => a -> String
+opStr = filter ((/=) '"') . show
 
 {-
 1 - 2 - 3
@@ -113,10 +116,16 @@ opStr = filter ((/=) '"')
 
 4 + 3 ** 2 ** 1 / 8 - 4 * 5
 (4 + ((3 ** (2 ** 1)) / 8)) - (4 * 5)
+
+3 ? 4 : 5 ? 6 : 7
+3 ? 4 : (5 ? 6 : 7)
+
+3 ? 4 : 5
+3 ? 8 : 9 ? 4 : 5
 -}
 
 chainR :: Parser t (a -> a -> a) -> Parser t a -> Parser t a
-chainR op p = (f <$> p <*> op <*> chainR op p) <|> p
+chainR op p = (f <$> p <*> op <*> chainR op p) <|> p -- TODO make more efficient -- factor out the `p`
   where
     f a b c = b a c
 
@@ -126,10 +135,20 @@ chainL op p = flip ($) <$> p <*> rest
     f b c rs a = rs (b a c)
     rest = (f <$> op <*> p <*> rest) <|> pReturn id
 
-unary :: Parser t (a -> a) -> Parser t a -> Parser t a
-unary op p = (op <*> unary op p) <|> p
+prefix :: Parser t (a -> a) -> Parser t a -> Parser t a
+prefix op p = (op <*> prefix op p) <|> p
 
-pNot = unary (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
+-- postfix :: Parser t (a -> a) -> Parser t a -> Parser t a
+-- postfix op p = 
+
+-- need a `ternaryL` function for left-associative
+ternaryR :: (a -> a -> a -> a) -> Parser t b -> Parser t c -> Parser t a -> Parser t a
+ternaryR f op1 op2 p = (g <$> p <*> op1 <*> recur <*> op2 <*> recur) <|> p -- TODO factor out the `p`
+  where
+    recur = ternaryR f op1 op2 p
+    g a1 s1 a2 s2 a3 = f a1 a2 a3
+
+pNot = prefix (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
 
 pExp = chainR (Two <$> (pChoice $ map pSyms ["**", "^"])) pNot
 
@@ -140,6 +159,8 @@ pAdd = chainL op p
   where
     op = Two <$> (pChoice $ map pSyms ["+", "-"])
     p = pMult
+
+pTern = ternaryR (Three "?-:") (pSym '?') (pSym ':') pAdd
 
 run :: Parser t a -> [t] -> Maybe ([t], a)
 run = unParser
