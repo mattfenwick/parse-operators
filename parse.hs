@@ -153,7 +153,7 @@ ternaryR :: (a -> a -> a -> a) -> Parser t b -> Parser t c -> Parser t a -> Pars
 ternaryR f op1 op2 p = (g <$> p <*> op1 <*> recur <*> op2 <*> recur) <|> p -- TODO factor out the `p`
   where
     recur = ternaryR f op1 op2 p
-    g a1 s1 a2 s2 a3 = f a1 a2 a3
+    g a1 _ a2 _ a3 = f a1 a2 a3
 
 -- TODO "if ... then ... else ..."
 -- TODO x.y, x[y], lambda x: ..., 
