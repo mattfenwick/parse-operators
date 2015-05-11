@@ -94,6 +94,7 @@ pInteger = read <$> pMany1 (pSatisfy (\x -> x <= '9' && x >= '0'))
 data T a b
     = Leaf a
     | One b (T a b)
+    | OnePost b (T a b)
     | Two b (T a b) (T a b)
     | Three b (T a b) (T a b) (T a b)
   deriving (Show)
@@ -101,6 +102,7 @@ data T a b
 showT :: (Show a, Show b) => T a b -> String
 showT (Leaf x) = show x
 showT (One op arg) = "(" ++ opStr op ++ " " ++ showT arg ++ ")"
+showT (OnePost op arg) = "(" ++ showT arg ++ " " ++ opStr op ++ ")"
 showT (Two op l r) = "(" ++ showT l ++ " " ++ opStr op ++ " " ++ showT r ++ ")"
 showT (Three op l m r) = "(" ++ opStr op ++ " " ++ showT l ++ " " ++ showT m ++ " " ++ showT r ++ ")"
 
@@ -138,8 +140,16 @@ chainL op p = flip ($) <$> p <*> rest
 prefix :: Parser t (a -> a) -> Parser t a -> Parser t a
 prefix op p = (op <*> prefix op p) <|> p
 
--- postfix :: Parser t (a -> a) -> Parser t a -> Parser t a
--- postfix op p = 
+postfix :: Parser t (a -> a) -> Parser t a -> Parser t a
+{-postfix op p = (\x f -> f x) <$> p <*> ops
+  where
+    ops = op <|> pReturn id-}
+postfix op p = flip ($) <$> p <*> rest
+  where
+    rest = (f <$> op <*> rest) <|> pReturn id
+    f o os a = os (o a)
+
+-- TODO parentheses
 
 -- need a `ternaryL` function for left-associative
 ternaryR :: (a -> a -> a -> a) -> Parser t b -> Parser t c -> Parser t a -> Parser t a
@@ -148,9 +158,20 @@ ternaryR f op1 op2 p = (g <$> p <*> op1 <*> recur <*> op2 <*> recur) <|> p -- TO
     recur = ternaryR f op1 op2 p
     g a1 s1 a2 s2 a3 = f a1 a2 a3
 
-pNot = prefix (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
+-- how do I do "if ... then ... else ..." expressions?
 
-pExp = chainR (Two <$> (pChoice $ map pSyms ["**", "^"])) pNot
+-- examples
+-- see:
+--   https://docs.python.org/3/reference/grammar.html
+--   https://docs.python.org/3/reference/expressions.html
+
+pPrefix = prefix (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
+
+pPostfix = postfix (OnePost <$> (pChoice $ map pSyms ["?", "!"])) pPrefix
+
+pPrefix2 = prefix (One <$> (pChoice $ map pSyms ["$", "@", "#"])) pPostfix
+
+pExp = chainR (Two <$> (pChoice $ map pSyms ["**", "^"])) pPrefix2
 
 pMult = chainL (Two <$> (pChoice $ map pSyms ["*", "x", "/", "%"])) pExp
 
@@ -162,6 +183,9 @@ pAdd = chainL op p
 
 pTern = ternaryR (Three "?-:") (pSym '?') (pSym ':') pAdd
 
+
 run :: Parser t a -> [t] -> Maybe ([t], a)
 run = unParser
+
+eg = run (showT <$> pTern) "$3!+4"
 
