@@ -141,9 +141,6 @@ prefix :: Parser t (a -> a) -> Parser t a -> Parser t a
 prefix op p = (op <*> prefix op p) <|> p
 
 postfix :: Parser t (a -> a) -> Parser t a -> Parser t a
-{-postfix op p = (\x f -> f x) <$> p <*> ops
-  where
-    ops = op <|> pReturn id-}
 postfix op p = flip ($) <$> p <*> rest
   where
     rest = (f <$> op <*> rest) <|> pReturn id
@@ -158,7 +155,8 @@ ternaryR f op1 op2 p = (g <$> p <*> op1 <*> recur <*> op2 <*> recur) <|> p -- TO
     recur = ternaryR f op1 op2 p
     g a1 s1 a2 s2 a3 = f a1 a2 a3
 
--- how do I do "if ... then ... else ..." expressions?
+-- TODO "if ... then ... else ..."
+-- TODO x.y, x[y], lambda x: ..., 
 
 -- examples
 -- see:
