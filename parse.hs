@@ -235,14 +235,6 @@ pySlot = postfix (PySlot <$> slotAccess) pyAtom
   where
     slotAccess = pSym '[' *> pyExpr <* pSym ']'
 
--- TODO is this somehow backwards?  try parsing "a.b.c"
--- looks like we need to either: 
---   1. treat '.' as a binary operator, or
---   2. put associativity into our postfix operators
-{- pyProp = postfix (PyProp <$> prop) pySlot
-  where
-    prop = pSym '.' *> pyExpr
--}
 pyProp = chainL ((\_ -> PyProp) <$> pSym '.') pySlot
 
 -- pyFn = prefix 
