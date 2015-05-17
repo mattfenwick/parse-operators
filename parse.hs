@@ -158,14 +158,10 @@ ternaryR f op1 op2 p = (g <$> p <*> op1 <*> recur <*> op2 <*> recur) <|> p -- TO
 -- TODO "if ... then ... else ..."
 -- TODO x.y, x[y], lambda x: ..., 
 
--- examples
--- see:
---   https://docs.python.org/3/reference/grammar.html
---   https://docs.python.org/3/reference/expressions.html
-
 pPrefix = prefix (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
 
-pPostfix = postfix (OnePost <$> (pChoice $ map pSyms ["!"])) pPrefix -- ["?", "!"])) pPrefix -- realized that postfix '?' conflicts with ternary ?:
+pPostfix = postfix (OnePost <$> (pChoice $ map pSyms ["!", "`", "_"])) pPrefix
+-- ["?", "!"])) pPrefix -- realized that postfix '?' conflicts with ternary ?:
 
 pPrefix2 = prefix (One <$> (pChoice $ map pSyms ["$", "@", "#"])) pPostfix
 
@@ -202,10 +198,14 @@ pRange low high = pSatisfy (\x -> low <= x && x <= high)
 -- +, -
 -- TODO what about comma?
 
+-- see:
+--   https://docs.python.org/3/reference/grammar.html
+--   https://docs.python.org/3/reference/expressions.html
+
 data PyOp
     = PyApply PyOp [PyOp]
     | PySlot PyOp PyOp
-    | PyProp PyOp String
+    | PyProp PyOp PyOp
     | PyFn [String]
     | PyBinary String PyOp PyOp
     | PyPrefix String PyOp
@@ -216,10 +216,10 @@ data PyOp
 
 pyShow (PyVar s) = s
 pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
+pyShow (PyProp expr field) = "( " ++ pyShow expr ++ " . " ++ pyShow field ++ " )"
 
 pyParens = (\_ x _ -> x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
--- pyVar = PyVar <$> pMany1 (pSatisfy (\x -> x >= 'a' && x <= 'z'))
 pyVar = PyVar <$> pMany1 letter
   where
     letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
@@ -231,13 +231,22 @@ pyAtom = pyParens <|> pyVar <|> pyNum
 -- maybe we should leave this for later, because of the 0+ and ,
 -- pyApply = pyExpr <*> pSym '(' <*> pyExpr <*> pSym ')' -- okay, 2 problems here: 1) 0+ args, comma-separated; 2) precedence of comma
 
--- pySlot = ((\a _ b _ -> PySlot a b) <$> pyAtom <*> pSym '[' <*> pyExpr <*> pSym ']') <|> pyAtom
-{- pySlot = postfix (PySlot <$> pyAtom) slotAccess <|> pyAtom
-  where
-    slotAccess = (\_ a _ -> a) <$> pSym '[' <*> pyExpr <*> pSym ']'
--}
 pySlot = postfix (PySlot <$> slotAccess) pyAtom
   where
     slotAccess = pSym '[' *> pyExpr <* pSym ']'
 
-pyExpr = pySlot
+-- TODO is this somehow backwards?  try parsing "a.b.c"
+-- looks like we need to either: 
+--   1. treat '.' as a binary operator, or
+--   2. put associativity into our postfix operators
+{- pyProp = postfix (PyProp <$> prop) pySlot
+  where
+    prop = pSym '.' *> pyExpr
+-}
+pyProp = chainL ((\_ -> PyProp) <$> pSym '.') pySlot
+
+-- pyFn = prefix 
+
+pyExpr = pyProp
+
+pyRun = run . (<$>) pyShow
