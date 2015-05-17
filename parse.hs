@@ -165,7 +165,7 @@ ternaryR f op1 op2 p = (g <$> p <*> op1 <*> recur <*> op2 <*> recur) <|> p -- TO
 
 pPrefix = prefix (One <$> (pChoice $ map pSyms ["!", "~", "-", "+"])) (Leaf <$> pInteger)
 
-pPostfix = postfix (OnePost <$> (pChoice $ map pSyms ["?", "!"])) pPrefix
+pPostfix = postfix (OnePost <$> (pChoice $ map pSyms ["!"])) pPrefix -- ["?", "!"])) pPrefix -- realized that postfix '?' conflicts with ternary ?:
 
 pPrefix2 = prefix (One <$> (pChoice $ map pSyms ["$", "@", "#"])) pPostfix
 
@@ -187,3 +187,57 @@ run = unParser
 
 eg = run (showT <$> pTern) "$3!+4"
 
+
+pRange :: Ord t => t -> t -> Parser t t
+pRange low high = pSatisfy (\x -> low <= x && x <= high)
+
+-- let's try some stuff, and maybe eventually get to python
+-- (_)    -- (x)
+-- _(...) -- f(x)(y)        -- { f(x) } (y)       -- how do we get this to left-associate?
+-- _[...] -- obj[ix][iy]    -- { obj[ix] } [iy]
+-- _._    -- obj.prop.name  -- { obj.a } .b
+-- \...:_ -- lambda x: y
+-- ^
+-- *, /
+-- +, -
+-- TODO what about comma?
+
+data PyOp
+    = PyApply PyOp [PyOp]
+    | PySlot PyOp PyOp
+    | PyProp PyOp String
+    | PyFn [String]
+    | PyBinary String PyOp PyOp
+    | PyPrefix String PyOp
+    | PyIfThenElse PyOp PyOp PyOp
+    | PyVar String
+    | PyNum String
+  deriving (Show)
+
+pyShow (PyVar s) = s
+pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
+
+pyParens = (\_ x _ -> x) <$> pSym '(' <*> pyExpr <*> pSym ')'
+
+-- pyVar = PyVar <$> pMany1 (pSatisfy (\x -> x >= 'a' && x <= 'z'))
+pyVar = PyVar <$> pMany1 letter
+  where
+    letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
+
+pyNum = PyNum <$> pMany1 (pRange '0' '9')
+
+pyAtom = pyParens <|> pyVar <|> pyNum
+
+-- maybe we should leave this for later, because of the 0+ and ,
+-- pyApply = pyExpr <*> pSym '(' <*> pyExpr <*> pSym ')' -- okay, 2 problems here: 1) 0+ args, comma-separated; 2) precedence of comma
+
+-- pySlot = ((\a _ b _ -> PySlot a b) <$> pyAtom <*> pSym '[' <*> pyExpr <*> pSym ']') <|> pyAtom
+{- pySlot = postfix (PySlot <$> pyAtom) slotAccess <|> pyAtom
+  where
+    slotAccess = (\_ a _ -> a) <$> pSym '[' <*> pyExpr <*> pSym ']'
+-}
+pySlot = postfix (PySlot <$> slotAccess) pyAtom
+  where
+    slotAccess = pSym '[' *> pyExpr <* pSym ']'
+
+pyExpr = pySlot
