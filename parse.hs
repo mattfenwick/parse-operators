@@ -217,6 +217,8 @@ data PyOp
 pyShow (PyVar s) = s
 pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
 pyShow (PyProp expr field) = "( " ++ pyShow expr ++ " . " ++ pyShow field ++ " )"
+pyShow (PyBinary op x y) = "( " ++ pyShow x ++ " " ++ op ++ " " ++ pyShow y ++ " )"
+pyShow (PyNum x) = x
 
 pyParens = (\_ x _ -> x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
@@ -239,6 +241,33 @@ pyProp = chainL ((\_ -> PyProp) <$> pSym '.') pySlot
 
 -- pyFn = prefix 
 
-pyExpr = pyProp
+pyExp = chainR (PyBinary <$> pSyms "**") pyProp
+
+pyMult = chainL (PyBinary <$> op) pyExp
+  where
+    op = pChoice $ map pSyms ["*", "/", "//", "%"]
+
+pyAdd = chainL (PyBinary <$> op) pyMult
+  where
+    op = pChoice $ map pSyms ["+", "-"]
+
+pyShift = chainL (PyBinary <$> op) pyAdd
+  where
+    op = pChoice $ map pSyms [">>", "<<"]
+
+pyAnd = chainL (PyBinary <$> pSyms "&") pyShift
+
+pyXor = chainL (PyBinary <$> pSyms "^") pyAnd
+
+pyOr = chainL (PyBinary <$> pSyms "|") pyXor
+
+pyComp = chainL (PyBinary <$> op) pyOr
+  where
+    op = pChoice $ map pSyms ["in", "not in", "is", "is not", "<", ">", "<=", ">=", "!=", "=="]
+
+pyExpr = pyShift
 
 pyRun = run . (<$>) pyShow
+
+pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", "(abc[def].ghi)[jkl]", "3+4/x<<4>>z**a**b"]
+pyEgs' = map (\x -> case x of (Just y) -> snd y; _ -> "") pyEgs
