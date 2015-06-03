@@ -137,6 +137,12 @@ chainL op p = flip ($) <$> p <*> rest
     f b c rs a = rs (b a c)
     rest = (f <$> op <*> p <*> rest) <|> pReturn id
 
+sepBy1 :: Parser t a -> Parser t b -> Parser t [b]
+sepBy1 sep p = (:) <$> p <*> (pMany0 (sep *> p))
+
+sepBy0 :: Parser t a -> Parser t b -> Parser t [b]
+sepBy0 sep p = sepBy1 sep p <|> pReturn []
+
 prefix :: Parser t (a -> a) -> Parser t a -> Parser t a
 prefix op p = (op <*> prefix op p) <|> p
 
@@ -206,7 +212,7 @@ data PyOp
     = PyApply PyOp [PyOp]
     | PySlot PyOp PyOp
     | PyProp PyOp PyOp
-    | PyFn [String]
+    | PyFn [String] PyOp
     | PyBinary String PyOp PyOp
     | PyPrefix String PyOp
     | PyIfThenElse PyOp PyOp PyOp
@@ -218,17 +224,21 @@ pyShow (PyVar s) = s
 pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
 pyShow (PyProp expr field) = "( " ++ pyShow expr ++ " . " ++ pyShow field ++ " )"
 pyShow (PyBinary op x y) = "( " ++ pyShow x ++ " " ++ op ++ " " ++ pyShow y ++ " )"
+pyShow (PyPrefix op x) = "( " ++ op ++ " " ++ pyShow x ++ " )"
 pyShow (PyNum x) = x
+pyShow (PyIfThenElse a b c) = "( " ++ pyShow a ++ " if " ++ pyShow b ++ " else " ++ pyShow c ++ " )"
+pyShow (PyFn args expr) = "( \\ " ++ concat args ++ " " ++ pyShow expr ++ " )"
 
 pyParens = (\_ x _ -> x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
-pyVar = PyVar <$> pMany1 letter
-  where
-    letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
+letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
+word = pMany1 letter
+
+pyVar = PyVar <$> word
 
 pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
-pyAtom = pyParens <|> pyVar <|> pyNum
+pyAtom = pyParens <|> pyNum -- <|> pyVar
 
 -- maybe we should leave this for later, because of the 0+ and ,
 -- pyApply = pyExpr <*> pSym '(' <*> pyExpr <*> pSym ')' -- okay, 2 problems here: 1) 0+ args, comma-separated; 2) precedence of comma
@@ -242,8 +252,13 @@ pyProp = chainL ((\_ -> PyProp) <$> pSym '.') pySlot
 -- pyFn = prefix 
 
 pyExp = chainR (PyBinary <$> pSyms "**") pyProp
+-- TODO oops -- Python has a funny rule: prefix +, -, ~ have higher precedence when on the right side of **
 
-pyMult = chainL (PyBinary <$> op) pyExp
+pySigns = prefix (PyPrefix <$> op) pyExp
+  where
+    op = pChoice $ map pSyms ["+", "-", "~"]
+
+pyMult = chainL (PyBinary <$> op) pySigns
   where
     op = pChoice $ map pSyms ["*", "/", "//", "%"]
 
@@ -265,9 +280,33 @@ pyComp = chainL (PyBinary <$> op) pyOr
   where
     op = pChoice $ map pSyms ["in", "not in", "is", "is not", "<", ">", "<=", ">=", "!=", "=="]
 
-pyExpr = pyShift
+pyNot = prefix (PyPrefix <$> pSyms "not") pyComp
+
+pyAnd' = chainL (PyBinary <$> pSyms "and") pyNot
+
+pyOr' = chainL (PyBinary <$> pSyms "or") pyAnd'
+
+-- TODO is this left- or right-associative?  docs seem to say left, but seems to be right
+-- compare:  
+{-
+>>> (1 if 2 else 3) if 0 else 5
+5
+>>> 1 if 2 else (3 if 0 else 5)
+1
+>>> 1 if 2 else 3 if 0 else 5
+1
+-}
+pyIfElse = chainR middle pyOr'
+  where
+    middle = (\_ b _ a c -> PyIfThenElse a b c) <$> pSyms "if" <*> pyExpr <*> pSyms "else"
+
+pyFn = prefix middle pyIfElse
+  where
+    middle = (\_ names _ expr -> PyFn names expr) <$> pSyms "lambda " <*> sepBy0 (pSym ',') word <*> pSym ':'
+
+pyExpr = pyFn
 
 pyRun = run . (<$>) pyShow
 
-pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", "(abc[def].ghi)[jkl]", "3+4/x<<4>>z**a**b"]
+pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", "(abc[def].ghi)[jkl]", "3+4/x<<4>>z**a**b", "2**-3**2"]
 pyEgs' = map (\x -> case x of (Just y) -> snd y; _ -> "") pyEgs
