@@ -235,6 +235,7 @@ data PyOp
     | PyIfThenElse PyOp PyOp PyOp
     | PyVar String
     | PyNum String
+    | PyParens PyOp
   deriving (Show)
 
 pyShow (PyApply f args) = "[ " ++ pyShow f ++ "( " ++ intercalate ", " (map pyShow args) ++ " ) ]"
@@ -246,8 +247,9 @@ pyShow (PyPrefix op x) = "( " ++ op ++ " " ++ pyShow x ++ " )"
 pyShow (PyIfThenElse a b c) = "( " ++ pyShow a ++ " if " ++ pyShow b ++ " else " ++ pyShow c ++ " )"
 pyShow (PyVar s) = s
 pyShow (PyNum x) = x
+pyShow (PyParens x) = "( " ++ pyShow x ++ " )"
 
-pyParens = (\_ x _ -> x) <$> pSym '(' <*> pyExpr <*> pSym ')'
+pyParens = (\_ x _ -> PyParens x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
 letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
 word = pMany1 letter
@@ -259,11 +261,11 @@ pyNum = PyNum <$> pMany1 (pRange '0' '9')
 pyAtom = pyParens <|> pyNum <|> pyVar
 
 -- TODO: should the comma be parsed as an operator, with precedence?
-pyApply = postfix (flip PyApply <$> parens) pyExpr
+pyApply = postfix (flip PyApply <$> parens) pyAtom
   where
     parens = pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')'
 
-pySlot = postfix (PySlot <$> slotAccess) pyAtom
+pySlot = postfix (PySlot <$> slotAccess) pyApply
   where
     slotAccess = pSym '[' *> pyExpr <* pSym ']'
 
