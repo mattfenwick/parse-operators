@@ -1,3 +1,5 @@
+import Prelude hiding ((<$>), (<*>), (*>), (<*), (>>=), (>>))
+import Data.List (intercalate)
 
 newtype Parser t a = Parser {
     unParser :: [t] -> Maybe ([t], a)
@@ -19,13 +21,22 @@ pReturn x = Parser (\xs -> Just (xs, x))
 pFail :: Parser t a
 pFail = Parser (const Nothing)
 
+infixl 1 >>=
+(>>=) :: Parser t a -> (a -> Parser t b) -> Parser t b
+Parser p1 >>= f = Parser (\xs -> case (p1 xs) of
+                                      Nothing -> Nothing
+                                      Just (ys, v) -> unParser (f v) ys)
+
+infixl 1 >>
+(>>) :: Parser t a -> Parser t b -> Parser t b
+p1 >> p2 = p1 >>= (\_ -> p2)
+
 infixl 5 <*>
 (<*>) :: Parser t (a -> b) -> Parser t a -> Parser t b
-Parser p1 <*> Parser p2 = Parser (\xs -> case (p1 xs) of
-                                              Nothing -> Nothing
-                                              Just (ys, f) -> case (p2 ys) of
-                                                                   Nothing -> Nothing
-                                                                   Just (zs, x) -> Just (zs, f x))
+p1 <*> p2 = 
+    p1 >>= \f -> 
+    p2 >>= \x ->
+    pReturn (f x)
 
 infixr 3 <|>
 (<|>) :: Parser t a -> Parser t a -> Parser t a
@@ -35,6 +46,12 @@ Parser p1 <|> Parser p2 = Parser (\xs -> let r1 = p1 xs in case r1 of
 
 pChoice :: [Parser t a] -> Parser t a
 pChoice = foldr (<|>) pFail
+
+pCheck :: (a -> Bool) -> Parser t a -> Parser t a
+pCheck pred p = 
+    p >>= \x -> if (pred x) 
+                then pReturn x
+                else pFail
 
 infix 7 <$>
 (<$>) :: (a -> b) -> Parser t a -> Parser t b
@@ -220,25 +237,26 @@ data PyOp
     | PyNum String
   deriving (Show)
 
-pyShow (PyVar s) = s
+pyShow (PyApply f args) = pyShow f ++ "( " ++ intercalate ", " (map pyShow args) ++ " )"
 pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
 pyShow (PyProp expr field) = "( " ++ pyShow expr ++ " . " ++ pyShow field ++ " )"
+pyShow (PyFn args expr) = "( \\ " ++ concat args ++ " -> " ++ pyShow expr ++ " )"
 pyShow (PyBinary op x y) = "( " ++ pyShow x ++ " " ++ op ++ " " ++ pyShow y ++ " )"
 pyShow (PyPrefix op x) = "( " ++ op ++ " " ++ pyShow x ++ " )"
-pyShow (PyNum x) = x
 pyShow (PyIfThenElse a b c) = "( " ++ pyShow a ++ " if " ++ pyShow b ++ " else " ++ pyShow c ++ " )"
-pyShow (PyFn args expr) = "( \\ " ++ concat args ++ " " ++ pyShow expr ++ " )"
+pyShow (PyVar s) = s
+pyShow (PyNum x) = x
 
 pyParens = (\_ x _ -> x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
 letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
 word = pMany1 letter
 
-pyVar = PyVar <$> word
+pyVar = PyVar <$> pCheck (\x -> x /= "lambda") word
 
 pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
-pyAtom = pyParens <|> pyNum -- <|> pyVar
+pyAtom = pyParens <|> pyNum <|> pyVar
 
 -- maybe we should leave this for later, because of the 0+ and ,
 -- pyApply = pyExpr <*> pSym '(' <*> pyExpr <*> pSym ')' -- okay, 2 problems here: 1) 0+ args, comma-separated; 2) precedence of comma
@@ -308,5 +326,6 @@ pyExpr = pyFn
 
 pyRun = run . (<$>) pyShow
 
-pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", "(abc[def].ghi)[jkl]", "3+4/x<<4>>z**a**b", "2**-3**2"]
+pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", "(abc[def].ghi)[jkl]", "3+4/x<<4>>z**a**b", "2**-3**2", "lambda x,y:3+lambda z:z"]
 pyEgs' = map (\x -> case x of (Just y) -> snd y; _ -> "") pyEgs
+pyEgs'' = mapM putStrLn pyEgs'
