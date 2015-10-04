@@ -307,23 +307,16 @@ pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
 pyAtom = pyParens <|> pyNum <|> pyVar <|> pyTuple <|> pyList <|> pyMap <|> pySet
 
--- TODO: put apply, slot, prop, at same level
 --   TODO: also at same level: slicing -- x[y:z]
-
--- TODO: should the comma be parsed as an operator, with precedence?
-pyApply = postfix (flip PyApply <$> parens) pyAtom
+pyTrailer = postfix pfOp pyAtom
   where
-    parens = pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')'
+    pfOp = prop <|> slot <|> apply
+    prop = flip PyProp <$> (pSym '.' *> pyAtom)
+    slot = flip PySlot <$> (pSym '[' *> pyExpr <* pSym ']')
+    -- TODO: should the comma be parsed as an operator, with precedence?
+    apply = flip PyApply <$> (pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')')
 
-pySlot = postfix (flip PySlot <$> slotAccess) pyApply
-  where
-    slotAccess = pSym '[' *> pyExpr <* pSym ']'
-
-pyProp = postfix (flip PyProp <$> dotAccess) pySlot
-  where
-    dotAccess = pSym '.' *> pySlot
-
-pyExp = chainR (PyBinary <$> pSyms "**") pyProp
+pyExp = chainR (PyBinary <$> pSyms "**") pyTrailer
 -- TODO oops -- Python has a funny rule: prefix +, -, ~ have higher precedence when on the right side of **
 
 pySigns = prefix (PyPrefix <$> op) pyExp
