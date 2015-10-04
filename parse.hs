@@ -62,6 +62,9 @@ f <$> Parser p = Parser (\xs -> case (p xs) of
 opt :: Parser t a -> a -> Parser t a
 opt p x = p <|> pReturn x
 
+optM :: Parser t a -> Parser t (Maybe a)
+optM p = opt (Just <$> p) Nothing
+
 infixl 5 <*
 (<*) :: Parser t a -> Parser t b -> Parser t a
 p1 <* p2 = const <$> p1 <*> p2
@@ -236,6 +239,10 @@ data PyOp
     | PyVar String
     | PyNum String
     | PyParens PyOp
+    | PyTuple [PyOp]
+    | PyList [PyOp]
+    | PyMap [(PyOp, PyOp)]
+    | PySet [PyOp]
   deriving (Show)
 
 pyShow (PyApply f args) = "[ " ++ pyShow f ++ "( " ++ intercalate ", " (map pyShow args) ++ " ) ]"
@@ -248,9 +255,48 @@ pyShow (PyIfThenElse a b c) = "( " ++ pyShow a ++ " if " ++ pyShow b ++ " else "
 pyShow (PyVar s) = s
 pyShow (PyNum x) = x
 pyShow (PyParens x) = "( " ++ pyShow x ++ " )"
+pyShow (PyTuple xs) = "( " ++ intercalate ", " (map pyShow xs) ++ ", )"
+pyShow (PyList xs) = "[ " ++ intercalate ", " (map pyShow xs) ++ " ]"
+pyShow (PyMap kvs) = "{ " ++ intercalate ", " (map kvShow kvs) ++ " }"
+  where
+    kvShow (k, v) = pyShow k ++ ": " ++ pyShow v
+pyShow (PySet xs) = "{ " ++ intercalate ", " (map pyShow xs) ++ " }"
 
 pyParens = (\_ x _ -> PyParens x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
+pyTuple = (\_ vs _ _ -> PyTuple vs) <$> open <*> sepBy1 comma pyExpr <*> optM comma <*> close
+  where
+    open = pSym '('
+    comma = pSym ','
+    close = pSym ')'
+
+-- TODO: incorrectly disallows [3,]
+--   but watch out: [,] is illegal
+pyList = (\_ vs _ -> PyList vs) <$> open <*> sepBy0 comma pyExpr <*> close
+  where
+    open = pSym '['
+    comma = pSym ','
+    close = pSym ']'
+
+-- TODO should dictionary and set be parsed separately?  is {3, 1:2} or {3:1, 2} a parse error or runtime error? (answer: parse error)
+
+-- TODO: incorrectly disallows {3:x,}
+--   but watch out: {,} is illegal
+pyMap = (\_ vs _ -> PyMap vs) <$> open <*> sepBy0 comma kvpair <*> close
+  where
+    open = pSym '{'
+    comma = pSym ','
+    close = pSym '}'
+    kvpair = (\k _ v -> (k, v)) <$> pyExpr <*> pSym ':' <*> pyExpr
+    
+-- TODO: incorrectly disallows {3,}
+--   but watch out: {,} is illegal
+pySet = (\_ vs _ -> PySet vs) <$> open <*> sepBy0 comma pyExpr <*> close
+  where
+    open = pSym '{'
+    comma = pSym ','
+    close = pSym '}'
+    
 word = pMany1 letter
   where
     letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
@@ -259,9 +305,7 @@ pyVar = PyVar <$> pCheck (\x -> x /= "lambda") word
 
 pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
--- TODO: put tuples, list literals, dictionary literals, set literals at same level as pyParens
-
-pyAtom = pyParens <|> pyNum <|> pyVar
+pyAtom = pyParens <|> pyNum <|> pyVar <|> pyTuple <|> pyList <|> pyMap <|> pySet
 
 -- TODO: put apply, slot, prop, at same level
 --   TODO: also at same level: slicing -- x[y:z]
