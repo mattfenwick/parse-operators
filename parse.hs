@@ -237,7 +237,7 @@ data PyOp
     | PyNum String
   deriving (Show)
 
-pyShow (PyApply f args) = pyShow f ++ "( " ++ intercalate ", " (map pyShow args) ++ " )"
+pyShow (PyApply f args) = "[ " ++ pyShow f ++ "( " ++ intercalate ", " (map pyShow args) ++ " ) ]"
 pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
 pyShow (PyProp expr field) = "( " ++ pyShow expr ++ " . " ++ pyShow field ++ " )"
 pyShow (PyFn args expr) = "( \\ " ++ concat args ++ " -> " ++ pyShow expr ++ " )"
@@ -260,14 +260,20 @@ pyAtom = pyParens <|> pyNum <|> pyVar
 
 -- maybe we should leave this for later, because of the 0+ and ,
 -- pyApply = pyExpr <*> pSym '(' <*> pyExpr <*> pSym ')' -- okay, 2 problems here: 1) 0+ args, comma-separated; 2) precedence of comma
+{-
+pyApply = f <$> pyExpr <*> pSym '(' <*> sepBy0 (pSym ',') pyExpr <*> pSym ')'
+  where
+    f e _ es _ = PyApply e es
+-}
+pyApply = postfix (flip PyApply <$> parens) pyExpr
+  where
+    parens = pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')'
 
 pySlot = postfix (PySlot <$> slotAccess) pyAtom
   where
     slotAccess = pSym '[' *> pyExpr <* pSym ']'
 
 pyProp = chainL ((\_ -> PyProp) <$> pSym '.') pySlot
-
--- pyFn = prefix 
 
 pyExp = chainR (PyBinary <$> pSyms "**") pyProp
 -- TODO oops -- Python has a funny rule: prefix +, -, ~ have higher precedence when on the right side of **
