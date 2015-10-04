@@ -373,6 +373,12 @@ pyExpr = pyFn
 
 pyRun = run . (<$>) pyShow
 
-pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", "(abc[def].ghi)[jkl]", "3+4/x<<4>>z**a**b", "2**-3**2", "lambda x,y:3+lambda z:z"]
+pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]", 
+                            "(abc[def].ghi)[jkl]", 
+                            "3+4/x<<4>>z**a**b", 
+                            "2**-3**2", 
+                            "lambda x,y:3+lambda z:z",
+                            "y.z[a]" -- should do: (y.z)[a], not y.(z[a])
+                            ]
 pyEgs' = map (\x -> case x of (Just y) -> snd y; _ -> "") pyEgs
 pyEgs'' = mapM putStrLn pyEgs'
