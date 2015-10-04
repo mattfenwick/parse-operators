@@ -246,7 +246,7 @@ data PyOp
   deriving (Show)
 
 pyShow (PyApply f args) = "[ " ++ pyShow f ++ "( " ++ intercalate ", " (map pyShow args) ++ " ) ]"
-pyShow (PySlot op arg) = "( " ++ pyShow arg ++ " [" ++ pyShow op ++ "] )"
+pyShow (PySlot op arg) = "( " ++ pyShow op ++ " [" ++ pyShow arg ++ "] )"
 pyShow (PyProp expr field) = "( " ++ pyShow expr ++ " . " ++ pyShow field ++ " )"
 pyShow (PyFn args expr) = "( \\ " ++ concat args ++ " -> " ++ pyShow expr ++ " )"
 pyShow (PyBinary op x y) = "( " ++ pyShow x ++ " " ++ op ++ " " ++ pyShow y ++ " )"
@@ -315,11 +315,13 @@ pyApply = postfix (flip PyApply <$> parens) pyAtom
   where
     parens = pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')'
 
-pySlot = postfix (PySlot <$> slotAccess) pyApply
+pySlot = postfix (flip PySlot <$> slotAccess) pyApply
   where
     slotAccess = pSym '[' *> pyExpr <* pSym ']'
 
-pyProp = chainL ((\_ -> PyProp) <$> pSym '.') pySlot
+pyProp = postfix (flip PyProp <$> dotAccess) pySlot
+  where
+    dotAccess = pSym '.' *> pySlot
 
 pyExp = chainR (PyBinary <$> pSyms "**") pyProp
 -- TODO oops -- Python has a funny rule: prefix +, -, ~ have higher precedence when on the right side of **
