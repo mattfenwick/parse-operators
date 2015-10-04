@@ -251,14 +251,20 @@ pyShow (PyParens x) = "( " ++ pyShow x ++ " )"
 
 pyParens = (\_ x _ -> PyParens x) <$> pSym '(' <*> pyExpr <*> pSym ')'
 
-letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
 word = pMany1 letter
+  where
+    letter = pRange 'a' 'z' <|> pRange 'A' 'Z'
 
 pyVar = PyVar <$> pCheck (\x -> x /= "lambda") word
 
 pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
+-- TODO: put tuples, list literals, dictionary literals, set literals at same level as pyParens
+
 pyAtom = pyParens <|> pyNum <|> pyVar
+
+-- TODO: put apply, slot, prop, at same level
+--   TODO: also at same level: slicing -- x[y:z]
 
 -- TODO: should the comma be parsed as an operator, with precedence?
 pyApply = postfix (flip PyApply <$> parens) pyAtom
