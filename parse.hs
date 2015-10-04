@@ -258,13 +258,7 @@ pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
 pyAtom = pyParens <|> pyNum <|> pyVar
 
--- maybe we should leave this for later, because of the 0+ and ,
--- pyApply = pyExpr <*> pSym '(' <*> pyExpr <*> pSym ')' -- okay, 2 problems here: 1) 0+ args, comma-separated; 2) precedence of comma
-{-
-pyApply = f <$> pyExpr <*> pSym '(' <*> sepBy0 (pSym ',') pyExpr <*> pSym ')'
-  where
-    f e _ es _ = PyApply e es
--}
+-- TODO: should the comma be parsed as an operator, with precedence?
 pyApply = postfix (flip PyApply <$> parens) pyExpr
   where
     parens = pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')'
