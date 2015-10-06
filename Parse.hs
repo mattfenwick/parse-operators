@@ -32,7 +32,6 @@ module Parse (
 ) where
 
 import Prelude hiding ((<$>), (<*>), (*>), (<*), (>>=), (>>), (<$))
-import Data.List (intercalate)
 
 newtype Parser t a = Parser {
     unParser :: [t] -> Maybe ([t], a)
