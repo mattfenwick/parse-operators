@@ -147,6 +147,7 @@ pyAnd' = chainL (PyBinary <$> pSyms "and") pyNot
 pyOr' = chainL (PyBinary <$> pSyms "or") pyAnd'
 
 -- TODO is this left- or right-associative?  docs seem to say left, but seems to be right
+-- TODO why isn't this parsed using 'ternaryR'?
 pyIfElse = chainR middle pyOr'
   where
     middle = (\_ b _ a c -> PyIfThenElse a b c) <$> chomp (pSyms "if") <*> pyExpr <*> chomp (pSyms "else")
