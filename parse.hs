@@ -213,6 +213,9 @@ eg = run (showT <$> pTern) "$3!+4"
 pRange :: Ord t => t -> t -> Parser t t
 pRange low high = pSatisfy (\x -> low <= x && x <= high)
 
+chomp :: Parser Char a -> Parser Char a
+chomp p = p <* pMany0 (pSym ' ')
+
 -- let's try some stuff, and maybe eventually get to python
 -- (_)    -- (x)
 -- _(...) -- f(x)(y)        -- { f(x) } (y)       -- how do we get this to left-associate?
@@ -305,7 +308,7 @@ pyVar = PyVar <$> pCheck (\x -> x /= "lambda") word
 
 pyNum = PyNum <$> pMany1 (pRange '0' '9')
 
-pyAtom = pyParens <|> pyNum <|> pyVar <|> pyTuple <|> pyList <|> pyMap <|> pySet
+pyAtom = chomp (pyParens <|> pyNum <|> pyVar <|> pyTuple <|> pyList <|> pyMap <|> pySet)
 
 --   TODO: also at same level: slicing -- x[y:z]
 pyTrailer = postfix pfOp pyAtom
@@ -352,24 +355,15 @@ pyAnd' = chainL (PyBinary <$> pSyms "and") pyNot
 pyOr' = chainL (PyBinary <$> pSyms "or") pyAnd'
 
 -- TODO is this left- or right-associative?  docs seem to say left, but seems to be right
--- compare:  
-{-
->>> (1 if 2 else 3) if 0 else 5
-5
->>> 1 if 2 else (3 if 0 else 5)
-1
->>> 1 if 2 else 3 if 0 else 5
-1
--}
 pyIfElse = chainR middle pyOr'
   where
-    middle = (\_ b _ a c -> PyIfThenElse a b c) <$> pSyms "if" <*> pyExpr <*> pSyms "else"
+    middle = (\_ b _ a c -> PyIfThenElse a b c) <$> chomp (pSyms "if") <*> pyExpr <*> chomp (pSyms "else")
 
 pyFn = prefix middle pyIfElse
   where
-    middle = (\_ names _ expr -> PyFn names expr) <$> pSyms "lambda " <*> sepBy0 (pSym ',') word <*> pSym ':'
+    middle = (\_ names _ expr -> PyFn names expr) <$> chomp (pSyms "lambda") <*> sepBy0 (pSym ',') word <*> pSym ':'
 
-pyExpr = pyFn
+pyExpr = chomp pyFn
 
 pyRun = run . (<$>) pyShow
 
@@ -378,7 +372,9 @@ pyEgs = map (pyRun pyExpr) ["abc[def].ghi[jkl]",
                             "3+4/x<<4>>z**a**b", 
                             "2**-3**2", 
                             "lambda x,y:3+lambda z:z",
-                            "y.z[a]" -- should do: (y.z)[a], not y.(z[a])
+                            "y.z[a]", -- should do: (y.z)[a], not y.(z[a])
+                            "1 if 2 else 3 if 0 else 5", -- I think it's parsed as "1 if 2 else (3 if 0 else 5)", not "(1 if 2 else 3) if 0 else 5"
+                            "3not in4" -- TODO we need to allow spaces
                             ]
 pyEgs' = map (\x -> case x of (Just y) -> snd y; _ -> "") pyEgs
 pyEgs'' = mapM putStrLn pyEgs'
