@@ -114,7 +114,6 @@ pSyms [] = pReturn []
 pSyms (x:xs) = (:) <$> pSym x <*> pSyms xs
 
 pMany0 :: Parser t a -> Parser t [a]
--- pMany0 p = (:) <$> p <*> opt (pMany0 p) []
 pMany0 p = opt ((:) <$> p <*> pMany0 p) []
 
 pMany1 :: Parser t a -> Parser t [a]
@@ -125,24 +124,6 @@ pSatisfy pred = Parser (\xs -> case xs of
                                     (y:ys)
                                       | pred y -> Just (ys, y)
                                     _ -> Nothing)
-
-
-{-
-1 - 2 - 3
-(1 - 2) - 3
-
-4 ** 5 ** 6
-4 ** (5 ** 6)
-
-4 + 3 ** 2 ** 1 / 8 - 4 * 5
-(4 + ((3 ** (2 ** 1)) / 8)) - (4 * 5)
-
-3 ? 4 : 5 ? 6 : 7
-3 ? 4 : (5 ? 6 : 7)
-
-3 ? 4 : 5
-3 ? 8 : 9 ? 4 : 5
--}
 
 chainR :: Parser t (a -> a -> a) -> Parser t a -> Parser t a
 chainR op p = (f <$> p <*> op <*> chainR op p) <|> p -- TODO make more efficient -- factor out the `p`
