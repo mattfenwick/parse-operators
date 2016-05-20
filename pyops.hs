@@ -106,7 +106,7 @@ pyAtom = chomp (pyParens <|> pyNum <|> pyVar <|> pyTuple <|> pyList <|> pyMap <|
 pyTrailer = postfix pfOp pyAtom
   where
     pfOp = prop <|> slot <|> apply
-    prop = flip PyProp <$> (pSym '.' *> pyAtom)
+    prop = flip PyProp <$> (pSym '.' *> pyAtom) // TODO why is this parsed as postfix, instead of with chainL? (possibly to allow it to be at the same precedence level as slot and apply)
     slot = flip PySlot <$> (pSym '[' *> pyExpr <* pSym ']')
     -- TODO: should the comma be parsed as an operator, with precedence?
     apply = flip PyApply <$> (pSym '(' *> sepBy0 (pSym ',') pyExpr <* pSym ')')
@@ -122,6 +122,7 @@ pyMult = chainL (PyBinary <$> op) pySigns
   where
     op = pChoice $ map pSyms ["*", "/", "//", "%"]
 
+-- TODO is it possible to make chainL less stupid, so that the operator function takes the args in the left operand, operator, right operand order?
 pyAdd = chainL (PyBinary <$> op) pyMult
   where
     op = pChoice $ map pSyms ["+", "-"]
